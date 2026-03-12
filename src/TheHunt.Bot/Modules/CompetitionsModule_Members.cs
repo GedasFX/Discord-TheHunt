@@ -20,6 +20,7 @@ public partial class CompetitionsModule
         public async Task Invite(
             [Summary(description: "User to invite to the competition.")]
             IGuildUser user,
+
             [Summary(description: "Team name. If left unspecified, will not assign a team to the participant.")]
             string? team = null)
         {
@@ -33,7 +34,7 @@ public partial class CompetitionsModule
                     $"{MentionUtils.MentionUser(user.Id)} is already part of the competition.");
 
             await sheetService.AddMember(competition.Spreadsheet, user.Id, user.DisplayName, team);
-            sheetQueryService.ResetCache(competition.Spreadsheet, "members");
+            await sheetQueryService.ResetCache(competition.Spreadsheet, "members");
 
             await FollowupAsync($"{MentionUtils.MentionUser(user.Id)} was successfully added to the competition.",
                 ephemeral: true);
@@ -56,7 +57,7 @@ public partial class CompetitionsModule
                     $"{MentionUtils.MentionUser(user.Id)} is not part of the competition.");
 
             await sheetService.RemoveMember(competition.Spreadsheet, participant.RowIdx);
-            sheetQueryService.ResetCache(competition.Spreadsheet, "members");
+            await sheetQueryService.ResetCache(competition.Spreadsheet, "members");
 
             await FollowupAsync($"{MentionUtils.MentionUser(user.Id)} was successfully removed from the competition.",
                 ephemeral: true);

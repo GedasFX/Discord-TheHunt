@@ -19,27 +19,28 @@ public class SpreadsheetService(string googleCredentialsFile)
         HttpClientInitializer = GoogleCredential.FromFile(googleCredentialsFile)
     });
 
-     #region General
+    #region General
 
-    public async Task<SheetsRef> CreateCompetition(string spreadsheetId, string sheetName)
+    public async Task<SheetsRef> CreateCompetition(string spreadsheetId, string sheetName,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var createBatch = await _service.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest()
             {
-                Requests = new[]
-                {
+                Requests =
+                [
                     new Request { AddSheet = CreateSheet(sheetName, "overview", frozenRowCount: 0) },
                     new Request { AddSheet = CreateSheet(sheetName, "members", 3) },
                     new Request { AddSheet = CreateSheet(sheetName, "items", 2) },
-                    new Request { AddSheet = CreateSheet(sheetName, "submissions", 12) },
-                }
-            }, spreadsheetId).ExecuteAsync();
+                    new Request { AddSheet = CreateSheet(sheetName, "submissions", 12) }
+                ]
+            }, spreadsheetId).ExecuteAsync(cancellationToken);
 
             await _service.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest()
             {
-                Requests = new[]
-                {
+                Requests =
+                [
                     new Request { UpdateCells = AddHeaderRow(createBatch, 1, "Id", "Name", "Team") },
                     new Request { UpdateCells = AddHeaderRow(createBatch, 2, "Item Name", "Points Value") },
                     new Request
@@ -47,9 +48,9 @@ public class SpreadsheetService(string googleCredentialsFile)
                         UpdateCells = AddHeaderRow(createBatch, 3,
                             "Id", "Image", "Date", "Item", "Team", "Submitter Id", "Submitter", "Verifier Id",
                             "Verifier", "Points Item", "Points Bonus", "Points Total")
-                    },
-                }
-            }, spreadsheetId).ExecuteAsync();
+                    }
+                ]
+            }, spreadsheetId).ExecuteAsync(cancellationToken);
 
             return new SheetsRef
             {
@@ -86,14 +87,15 @@ public class SpreadsheetService(string googleCredentialsFile)
     
     #region Members
 
-    public async Task<IReadOnlyList<CompetitionUser>> GetMembers(SheetsRef sheet)
+    public async Task<IReadOnlyList<CompetitionUser>> GetMembers(SheetsRef sheet,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var data = await _service.Spreadsheets.Values.BatchGetByDataFilter(new BatchGetValuesByDataFilterRequest()
             {
-                DataFilters = new[]
-                {
+                DataFilters =
+                [
                     new DataFilter
                     {
                         GridRange = new GridRange
@@ -101,16 +103,21 @@ public class SpreadsheetService(string googleCredentialsFile)
                             SheetId = sheet.Sheets.Members, StartRowIndex = 1, StartColumnIndex = 0, EndColumnIndex = 1
                         }
                     }
-                }
-            }, sheet.SpreadsheetId).ExecuteAsync();
+                ]
+            }, sheet.SpreadsheetId).ExecuteAsync(cancellationToken);
 
-            return data.ValueRanges[0].ValueRange.Values?
-                       .Select((t, i) => (List: t, Idx: i)).Where(t => t.List?.Count > 0)
-                       .Select(t => new CompetitionUser
-                       {
-                           UserId = ulong.Parse((string)t.List[0]), RowIdx = t.Idx,
-                       }).AsReadOnlyList()
-                   ?? Array.Empty<CompetitionUser>();
+            IReadOnlyList<CompetitionUser> result =
+            [
+                ..data.ValueRanges[0].ValueRange.Values?
+                      .Select((t, i) => (List: t, Idx: i)).Where(t => t.List?.Count > 0)
+                      .Select(t => new CompetitionUser
+                      {
+                          UserId = ulong.Parse((string)t.List[0]), RowIdx = t.Idx,
+                      })
+                  ?? []
+            ];
+            
+            return result;
         }
         catch (Exception e)
         {
@@ -124,35 +131,35 @@ public class SpreadsheetService(string googleCredentialsFile)
     {
         await _service.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest()
         {
-            Requests = new[]
-            {
-                SheetUtils.AppendRow(sheet.Sheets.Members, new[]
-                {
+            Requests =
+            [
+                SheetUtils.AppendRow(sheet.Sheets.Members, [
                     SheetUtils.StringCell(userId.ToString()),
                     SheetUtils.StringCell(displayName),
-                    SheetUtils.StringCell(team),
-                })
-            }
+                    SheetUtils.StringCell(team)
+                ])
+            ]
         }, sheet.SpreadsheetId).ExecuteAsync();
     }
 
-    public async Task RemoveMember(SheetsRef sheet, int rowNumber)
+    public async Task RemoveMember(SheetsRef sheet, int rowNumber, CancellationToken cancellationToken = default)
     {
-        await RemoveRow(sheet.SpreadsheetId, sheet.Sheets.Members, rowNumber);
+        await RemoveRow(sheet.SpreadsheetId, sheet.Sheets.Members, rowNumber, cancellationToken);
     }
 
     #endregion
 
     #region Items
 
-    public async Task<IReadOnlyList<CompetitionItem>> GetItems(SheetsRef sheet)
+    public async Task<IReadOnlyList<CompetitionItem>> GetItems(SheetsRef sheet,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var data = await _service.Spreadsheets.Values.BatchGetByDataFilter(new BatchGetValuesByDataFilterRequest()
             {
-                DataFilters = new[]
-                {
+                DataFilters =
+                [
                     new DataFilter
                     {
                         GridRange = new GridRange
@@ -160,19 +167,24 @@ public class SpreadsheetService(string googleCredentialsFile)
                             SheetId = sheet.Sheets.Items, StartRowIndex = 1, StartColumnIndex = 0, EndColumnIndex = 1
                         }
                     }
-                }
-            }, sheet.SpreadsheetId).ExecuteAsync();
+                ]
+            }, sheet.SpreadsheetId).ExecuteAsync(cancellationToken);
 
-            return data.ValueRanges[0].ValueRange.Values?
-                       .Select((t, i) => (List: t, Idx: i))
-                       .Where(t => t.List?.Count > 0)
-                       .Select(t => (Name: t.List[0] as string, t.Idx))
-                       .Where(t => !string.IsNullOrEmpty(t.Name))
-                       .Select(t => new CompetitionItem
-                       {
-                           Name = t.Name!, RowIdx = t.Idx,
-                       }).AsReadOnlyList()
-                   ?? Array.Empty<CompetitionItem>();
+            IReadOnlyList<CompetitionItem> result =
+            [
+                ..data.ValueRanges[0].ValueRange.Values?
+                      .Select((t, i) => (List: t, Idx: i))
+                      .Where(t => t.List?.Count > 0)
+                      .Select(t => (Name: t.List[0] as string, t.Idx))
+                      .Where(t => !string.IsNullOrEmpty(t.Name))
+                      .Select(t => new CompetitionItem
+                      {
+                          Name = t.Name!, RowIdx = t.Idx,
+                      })
+                  ?? []
+            ];
+
+            return result;
         }
         catch (Exception e)
         {
@@ -182,24 +194,24 @@ public class SpreadsheetService(string googleCredentialsFile)
         }
     }
 
-    public async Task AddItem(SheetsRef sheetsRef, string name, int pointsValue = 0)
+    public async Task AddItem(SheetsRef sheetsRef, string name, int pointsValue = 0,
+        CancellationToken cancellationToken = default)
     {
         await _service.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest()
         {
-            Requests = new[]
-            {
-                SheetUtils.AppendRow(sheetsRef.Sheets.Items, new[]
-                {
+            Requests =
+            [
+                SheetUtils.AppendRow(sheetsRef.Sheets.Items, [
                     SheetUtils.StringCell(name),
-                    SheetUtils.NumberCell(pointsValue),
-                })
-            }
-        }, sheetsRef.SpreadsheetId).ExecuteAsync();
+                    SheetUtils.NumberCell(pointsValue)
+                ])
+            ]
+        }, sheetsRef.SpreadsheetId).ExecuteAsync(cancellationToken);
     }
     
-    public async Task RemoveItem(SheetsRef sheet, int rowNumber)
+    public async Task RemoveItem(SheetsRef sheet, int rowNumber, CancellationToken cancellationToken = default)
     {
-        await RemoveRow(sheet.SpreadsheetId, sheet.Sheets.Items, rowNumber);
+        await RemoveRow(sheet.SpreadsheetId, sheet.Sheets.Items, rowNumber, cancellationToken);
     }
 
     #endregion
@@ -207,46 +219,41 @@ public class SpreadsheetService(string googleCredentialsFile)
     #region Submissions
 
     public async Task AddSubmission(SheetsRef sheetsRef, ulong submissionId, string submissionUrl, ulong submitterId,
-        ulong verifierId, string? imageUrl,
-        DateTime date, string? item, int bonus)
+        ulong verifierId, string? imageUrl, DateTime date, string? item, int bonus, CancellationToken cancellationToken = default)
     {
         await _service.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest()
         {
-            Requests = new[]
-            {
-                SheetUtils.AppendRow(sheetsRef.Sheets.Submissions, new[]
-                {
+            Requests =
+            [
+                SheetUtils.AppendRow(sheetsRef.Sheets.Submissions, [
                     SheetUtils.FormulaCell($"=HYPERLINK(\"{submissionUrl}\", \"{submissionId}\")"),
                     SheetUtils.FormulaCell(imageUrl != null ? $"=HYPERLINK(\"{imageUrl}\")" : null),
                     SheetUtils.FormulaCell(date.ToString("=DATE(yyyy,MM,dd) + TI\\ME(HH,mm,ss)")),
                     SheetUtils.StringCell(item),
-                    SheetUtils.FormulaCell(
-                        $"=IF(ISBLANK(VLOOKUP(INDIRECT(\"R[0]C6\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:D, 3, FALSE)), INDIRECT(\"R[0]C7\", FALSE), VLOOKUP(INDIRECT(\"R[0]C6\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:D, 3, FALSE))"),
+                    SheetUtils.FormulaCell($"=IF(ISBLANK(VLOOKUP(INDIRECT(\"R[0]C6\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:D, 3, FALSE)), INDIRECT(\"R[0]C7\", FALSE), VLOOKUP(INDIRECT(\"R[0]C6\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:D, 3, FALSE))"),
                     SheetUtils.StringCell(submitterId.ToString()),
-                    SheetUtils.FormulaCell(
-                        $"=VLOOKUP(INDIRECT(\"R[0]C6\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:B, 2, FALSE)"),
+                    SheetUtils.FormulaCell($"=VLOOKUP(INDIRECT(\"R[0]C6\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:B, 2, FALSE)"),
                     SheetUtils.StringCell(verifierId.ToString()),
-                    SheetUtils.FormulaCell(
-                        $"=VLOOKUP(INDIRECT(\"R[0]C8\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:B, 2, FALSE)"),
-                    SheetUtils.FormulaCell(
-                        $"=VLOOKUP(INDIRECT(\"R[0]C4\", FALSE), '__{sheetsRef.SheetName}_items'!A$2:C, 2, FALSE)"),
+                    SheetUtils.FormulaCell($"=VLOOKUP(INDIRECT(\"R[0]C8\", FALSE), '__{sheetsRef.SheetName}_members'!A$2:B, 2, FALSE)"),
+                    SheetUtils.FormulaCell($"=VLOOKUP(INDIRECT(\"R[0]C4\", FALSE), '__{sheetsRef.SheetName}_items'!A$2:C, 2, FALSE)"),
                     SheetUtils.NumberCell(bonus),
-                    SheetUtils.FormulaCell("=IFNA(INDIRECT(\"R[0]C[-2]\", FALSE)) + INDIRECT(\"R[0]C[-1]\", FALSE)"),
-                })
-            }
-        }, sheetsRef.SpreadsheetId).ExecuteAsync();
+                    SheetUtils.FormulaCell("=IFNA(INDIRECT(\"R[0]C[-2]\", FALSE)) + INDIRECT(\"R[0]C[-1]\", FALSE)")
+                ])
+            ]
+        }, sheetsRef.SpreadsheetId).ExecuteAsync(cancellationToken);
     }
 
     #endregion
 
     #region === Utils ===
 
-    public async Task RemoveRow(string spreadsheetId, int sheetId, int rowNumber)
+    public async Task RemoveRow(string spreadsheetId, int sheetId, int rowNumber,
+        CancellationToken cancellationToken = default)
     {
         await _service.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest()
         {
-            Requests = new[]
-            {
+            Requests =
+            [
                 new Request()
                 {
                     DeleteDimension = new DeleteDimensionRequest()
@@ -258,8 +265,8 @@ public class SpreadsheetService(string googleCredentialsFile)
                         }
                     }
                 }
-            }
-        }, spreadsheetId).ExecuteAsync();
+            ]
+        }, spreadsheetId).ExecuteAsync(cancellationToken);
     }
 
     #endregion
@@ -271,11 +278,13 @@ public class SpreadsheetService(string googleCredentialsFile)
         return new UpdateCellsRequest()
         {
             Start = new GridCoordinate()
-                { ColumnIndex = 0, RowIndex = 0, SheetId = createBatch.Replies[index].AddSheet.Properties.SheetId },
-            Fields = "*", Rows = new[]
             {
-                new RowData { Values = GetHeaderCells(header).ToList() }
-            }
+                ColumnIndex = 0, RowIndex = 0, SheetId = createBatch.Replies[index].AddSheet.Properties.SheetId
+            },
+            Fields = "*", Rows =
+            [
+                new RowData { Values = GetHeaderCells(header) }
+            ]
         };
     }
 
@@ -292,12 +301,15 @@ public class SpreadsheetService(string googleCredentialsFile)
         };
     }
 
-    private static IEnumerable<CellData> GetHeaderCells(params string[] values)
+    private static IList<CellData> GetHeaderCells(params string[] values)
     {
-        return values.Select(value => new CellData()
-        {
-            UserEnteredValue = new ExtendedValue() { StringValue = value },
-            UserEnteredFormat = new CellFormat() { TextFormat = new TextFormat() { Bold = true } }
-        });
+        return
+        [
+            ..values.Select(value => new CellData()
+            {
+                UserEnteredValue = new ExtendedValue() { StringValue = value },
+                UserEnteredFormat = new CellFormat() { TextFormat = new TextFormat() { Bold = true } }
+            })
+        ];
     }
 }

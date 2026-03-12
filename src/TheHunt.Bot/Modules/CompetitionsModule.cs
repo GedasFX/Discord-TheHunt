@@ -20,10 +20,13 @@ public partial class CompetitionsModule(
     public async Task Create(
         [Summary(description: "Google Spreadsheet Id. 'https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit#gid=0'")]
         string spreadsheetId,
+        
         [Summary(description: "Users with this role will be able to verify submissions.")]
         IRole verifierRole,
+        
         [Summary(description: "Name of the competition. Defaults to specified channel name.")]
-        string? name = null)
+        string? name = null
+    )
     {
         if (spreadsheetId.Length != 44)
         {
@@ -55,8 +58,8 @@ public partial class CompetitionsModule(
         var competition = await dbContext.Competitions.FindAsync(Context.Channel.Id) ??
                           throw EntityNotFoundException.CompetitionNotFound;
 
-        spreadsheetQueryService.ResetCache(competition.Spreadsheet, "items");
-        spreadsheetQueryService.ResetCache(competition.Spreadsheet, "members");
+        await spreadsheetQueryService.ResetCache(competition.Spreadsheet, "items");
+        await spreadsheetQueryService.ResetCache(competition.Spreadsheet, "members");
 
         await RespondAsync("Configuration reloaded.", ephemeral: true);
     }

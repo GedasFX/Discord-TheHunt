@@ -46,7 +46,7 @@ public static class SheetUtils
 
     public static IList<RowData> SingleRow(params CellData[] cells)
     {
-        return new RowData[] { new() { Values = cells } };
+        return [new RowData { Values = cells }];
     }
 
     public static Request AppendRow(int sheetId, IList<CellData> cells)
@@ -56,7 +56,7 @@ public static class SheetUtils
             AppendCells = new AppendCellsRequest
             {
                 SheetId = sheetId, Fields = "*",
-                Rows = new[] { new RowData { Values = cells } },
+                Rows = [new RowData { Values = cells }],
             }
         };
     }

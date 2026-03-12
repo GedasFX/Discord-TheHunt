@@ -21,6 +21,7 @@ public partial class CompetitionsModule
         public async Task Add(
             [Summary(description: "Name of the item.")]
             string name,
+
             [Summary(description: "Points value. Default = 0.")]
             int pointsValue = 0)
         {
@@ -37,7 +38,7 @@ public partial class CompetitionsModule
             }
 
             await sheetService.AddItem(competition.Spreadsheet, name, pointsValue);
-            sheetQueryService.ResetCache(competition.Spreadsheet, "items");
+            await sheetQueryService.ResetCache(competition.Spreadsheet, "items");
 
             await FollowupAsync($"Item '{name}' was registered. To undo, run:\n```/competitions items remove name:{name}```",
                 ephemeral: true);
@@ -60,7 +61,7 @@ public partial class CompetitionsModule
                 throw new EntityValidationException($"Item '{name}' was not registered.");
 
             await sheetService.RemoveItem(competition.Spreadsheet, item.RowIdx);
-            sheetQueryService.ResetCache(competition.Spreadsheet, "items");
+            await sheetQueryService.ResetCache(competition.Spreadsheet, "items");
 
             await FollowupAsync($"Item '{name}' was unregistered. To undo, run:\n```/competitions items add name:{name}```",
                 ephemeral: true);

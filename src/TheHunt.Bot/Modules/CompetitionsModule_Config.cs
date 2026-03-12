@@ -2,16 +2,13 @@
 using Discord.Interactions;
 using TheHunt.Core.Exceptions;
 using TheHunt.Data;
-using TheHunt.Data.Services;
-using TheHunt.Sheets.Services;
 
 namespace TheHunt.Bot.Modules;
 
 public partial class CompetitionsModule
 {
     [Group("config", "Manage competition configuration. To see active config, run /competitions show-config.")]
-    public class CompetitionsConfigModule(
-        AppDbContext dbContext)
+    public class CompetitionsConfigModule(AppDbContext dbContext)
         : InteractionModuleBase<SocketInteractionContext>
     {
         [RequireUserPermission(ChannelPermission.ManageChannels)]
@@ -28,17 +25,14 @@ public partial class CompetitionsModule
             competition.VerifierRoleId = newRole.Id;
             await dbContext.SaveChangesAsync();
 
-            await RespondAsync(
-                $"Verifier role was updated from {MentionUtils.MentionRole(previousVerifierRoleId)} to {MentionUtils.MentionRole(competition.VerifierRoleId)}.",
+            await RespondAsync($"Verifier role was updated from {MentionUtils.MentionRole(previousVerifierRoleId)} to {MentionUtils.MentionRole(competition.VerifierRoleId)}.",
                 ephemeral: true);
         }
 
         [RequireUserPermission(ChannelPermission.ManageChannels)]
         [SlashCommand("items-restricted", "Prevent submission of unknown items.")]
         public async Task ItemsRestricted(
-            [Summary(
-                description:
-                "If set to 'true', when verifying an unknown item (not in __xyz_items), verification will fail.")]
+            [Summary(description: "If set to 'true', when verifying an unknown item (not in __xyz_items), verification will fail.")]
             bool restricted)
         {
             var competition = await dbContext.Competitions.FindAsync(Context.Channel.Id) ??
@@ -47,8 +41,7 @@ public partial class CompetitionsModule
             competition.Features.ItemsRestricted = restricted;
             await dbContext.SaveChangesAsync();
 
-            await RespondAsync(
-                $"When verifying an unknown item (not present in __xyz_items), verification will now {(restricted ? "fail" : "succeed")}.",
+            await RespondAsync($"When verifying an unknown item (not present in __xyz_items), verification will now {(restricted ? "fail" : "succeed")}.",
                 ephemeral: true);
         }
     }
