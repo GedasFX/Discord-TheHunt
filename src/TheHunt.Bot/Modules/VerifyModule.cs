@@ -162,10 +162,9 @@ public class VerifyModule(
                 Context.User.Id, GetAttachedImageUrl(message),
                 message.Timestamp.UtcDateTime, item, bonusPoints);
 
-            // Remove pending and add verified reaction
             await message.AddReactionAsync(VerifiedEmote);
 
-            await FollowupAsync("Submission verified successfully!", ephemeral: true,
+            await FollowupAsync($"Submission verified successfully!\nItem: **{item}**", ephemeral: true,
                 components: new ComponentBuilder().AddRow(new ActionRowBuilder()
                     .WithSpreadsheetRefButton("Open Google Sheets", "📑", sheetsRef.SpreadsheetId,
                         sheetsRef.Sheets.Submissions)).Build());
