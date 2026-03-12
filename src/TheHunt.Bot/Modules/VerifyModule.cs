@@ -18,6 +18,7 @@ public class VerifyModule(
     : InteractionModuleBase<SocketInteractionContext>
 {
     private static IEmote VerifiedEmote { get; } = new Emoji("✅");
+    private static IEmote PendingEmote { get; } = new Emoji("⏳");
 
     private static string SelectedMessageCacheKey(ulong userId, ulong channelId) =>
         $"__selected_message_{userId}_{channelId}";
@@ -53,7 +54,7 @@ public class VerifyModule(
     public async Task VerifySelected(
         [Summary(description: "Name of the item being submitted.")]
         [Autocomplete(typeof(CompetitionsModule.CompetitionsItemsModule.ItemsListAutocompleteHandler))]
-        string? item = null,
+        string? item,
         
         [Summary(description: "Bonus points to award.")]
         int bonus = 0)
@@ -62,8 +63,7 @@ public class VerifyModule(
         var messageId = await hybridCache.GetOrCreateAsync(cacheKey, _ => ValueTask.FromResult<ulong>(0));
         if (messageId is 0)
         {
-            await RespondAsync(
-                "No message selected. Right-click a message and choose **Select for Verification** first.",
+            await RespondAsync("No message selected. Right-click a message and choose **Select for Verification** first.",
                 ephemeral: true);
             return;
         }
@@ -102,12 +102,18 @@ public class VerifyModule(
 
         var message = await Context.Channel.GetMessageAsync(messageId);
 
-        if (message.Reactions.TryGetValue(VerifiedEmote, out var dat) && dat.IsMe)
+        if (message.Reactions.TryGetValue(VerifiedEmote, out var verifiedReaction) && verifiedReaction.IsMe)
         {
             await FollowupAsync("Submission was already verified.", ephemeral: true);
             return;
         }
 
+        if (message.Reactions.TryGetValue(PendingEmote, out var pendingReaction) && pendingReaction.IsMe)
+        {
+            await FollowupAsync("Submission is currently being verified by someone else.", ephemeral: true);
+            return;
+        }
+        
         var competition = await competitionsQueryService.GetCompetition(message.Channel.Id);
         if (competition == null)
         {
@@ -118,8 +124,7 @@ public class VerifyModule(
 
         if (!contextGuildUser.Roles.Any(r => r.Id == competition.VerifierRoleId))
         {
-            await FollowupAsync(
-                $"Unable to verify submission: Only members in {MentionUtils.MentionRole(competition.VerifierRoleId)} role can verify submissions.",
+            await FollowupAsync($"Unable to verify submission: Only members in {MentionUtils.MentionRole(competition.VerifierRoleId)} role can verify submissions.",
                 ephemeral: true);
             return;
         }
@@ -139,15 +144,36 @@ public class VerifyModule(
             return;
         }
 
-        await spreadsheetService.AddSubmission(sheetsRef, message.Id, message.GetJumpUrl(), message.Author.Id,
-            Context.User.Id, GetAttachedImageUrl(message),
-            message.Timestamp.UtcDateTime, item, bonusPoints);
+        // Add pending reaction to lock this submission
+        try
+        {
+            await message.AddReactionAsync(PendingEmote);
+        }
+        catch
+        {
+            // If we fail to add pending reaction, another verification might be in progress
+            await FollowupAsync("Failed to add pending reaction. Please try again.", ephemeral: true);
+            return;
+        }
+        
+        try
+        {
+            await spreadsheetService.AddSubmission(sheetsRef, message.Id, message.GetJumpUrl(), message.Author.Id,
+                Context.User.Id, GetAttachedImageUrl(message),
+                message.Timestamp.UtcDateTime, item, bonusPoints);
 
-        await message.AddReactionAsync(VerifiedEmote);
-        await FollowupAsync("Submission verified successfully!", ephemeral: true,
-            components: new ComponentBuilder().AddRow(new ActionRowBuilder()
-                .WithSpreadsheetRefButton("Open Google Sheets", "📑", sheetsRef.SpreadsheetId,
-                    sheetsRef.Sheets.Submissions)).Build());
+            // Remove pending and add verified reaction
+            await message.AddReactionAsync(VerifiedEmote);
+
+            await FollowupAsync("Submission verified successfully!", ephemeral: true,
+                components: new ComponentBuilder().AddRow(new ActionRowBuilder()
+                    .WithSpreadsheetRefButton("Open Google Sheets", "📑", sheetsRef.SpreadsheetId,
+                        sheetsRef.Sheets.Submissions)).Build());
+        }
+        finally
+        {
+            await message.RemoveReactionAsync(PendingEmote, Context.Client.CurrentUser);
+        }
     }
 
     private static string? GetAttachedImageUrl(IMessage message)
