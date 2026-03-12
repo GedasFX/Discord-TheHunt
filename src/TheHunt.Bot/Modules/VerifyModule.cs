@@ -24,30 +24,28 @@ public class VerifyModule(
 
     [CommandContextType(InteractionContextType.Guild)]
     [MessageCommand("Verify Submission")]
-    public async Task VerifySubmission(IUserMessage message, CancellationToken cancellationToken = default)
+    public async Task VerifySubmission(IUserMessage message)
     {
-        await RespondWithModalAsync<SubmissionModal>($"submission_create:{message.Id}",
-            new RequestOptions() { CancelToken = cancellationToken });
+        await RespondWithModalAsync<SubmissionModal>($"submission_create:{message.Id}");
     }
 
     [CommandContextType(InteractionContextType.Guild)]
     [MessageCommand("Quick Verify Submission")]
-    public async Task QuickVerifySubmission(IUserMessage message, CancellationToken cancellationToken = default)
+    public async Task QuickVerifySubmission(IUserMessage message)
     {
-        await VerifySubmission(message.Id, message.Content.Split('\n')[0], cancellationToken: cancellationToken);
+        await VerifySubmission(message.Id, message.Content.Split('\n')[0]);
     }
 
     [CommandContextType(InteractionContextType.Guild)]
     [MessageCommand("Select for Verification")]
-    public async Task SelectForVerification(IUserMessage message, CancellationToken cancellationToken = default)
+    public async Task SelectForVerification(IUserMessage message)
     {
         await hybridCache.SetAsync(
             SelectedMessageCacheKey(Context.User.Id, Context.Channel.Id),
-            message.Id,
-            cancellationToken: cancellationToken);
+            message.Id);
         await RespondAsync(
             "Message selected for verification. Now use `/verify` to complete the verification.",
-            ephemeral: true, options: new RequestOptions { CancelToken = cancellationToken });
+            ephemeral: true);
     }
 
     [CommandContextType(InteractionContextType.Guild)]
@@ -58,23 +56,20 @@ public class VerifyModule(
         string? item = null,
         
         [Summary(description: "Bonus points to award.")]
-        int bonus = 0,
-        
-        CancellationToken cancellationToken = default)
+        int bonus = 0)
     {
         var cacheKey = SelectedMessageCacheKey(Context.User.Id, Context.Channel.Id);
-        var messageId = await hybridCache.GetOrCreateAsync(cacheKey, _ => ValueTask.FromResult<ulong?>(null), cancellationToken: cancellationToken);
-        if (messageId is null)
+        var messageId = await hybridCache.GetOrCreateAsync(cacheKey, _ => ValueTask.FromResult<ulong>(0));
+        if (messageId is 0)
         {
             await RespondAsync(
                 "No message selected. Right-click a message and choose **Select for Verification** first.",
-                ephemeral: true,
-                options: new RequestOptions { CancelToken = cancellationToken });
+                ephemeral: true);
             return;
         }
 
-        await hybridCache.RemoveAsync(cacheKey, cancellationToken);
-        await VerifySubmission(messageId.Value, item, bonus, cancellationToken);
+        await hybridCache.RemoveAsync(cacheKey);
+        await VerifySubmission(messageId, item, bonus);
     }
 
     public class SubmissionModal : IModal
@@ -92,33 +87,32 @@ public class VerifyModule(
     }
 
     [ModalInteraction("submission_create:*")]
-    public async Task VerifySubmissionCallback(ulong messageId, SubmissionModal modal, CancellationToken cancellationToken = default)
+    public async Task VerifySubmissionCallback(ulong messageId, SubmissionModal modal)
     {
-        await VerifySubmission(messageId, modal.Item, int.TryParse(modal.Bonus, out var bonus) ? bonus : 0, cancellationToken);
+        await VerifySubmission(messageId, modal.Item, int.TryParse(modal.Bonus, out var bonus) ? bonus : 0);
     }
 
 
-    private async Task VerifySubmission(ulong messageId, string? item = null, int bonusPoints = 0,
-        CancellationToken cancellationToken = default)
+    private async Task VerifySubmission(ulong messageId, string? item = null, int bonusPoints = 0)
     {
         if (Context.User is not SocketGuildUser contextGuildUser)
             throw new UnreachableException("Invoked VerifySubmission in DM Context.");
 
-        await DeferAsync(ephemeral: true, new RequestOptions { CancelToken = cancellationToken });
+        await DeferAsync(ephemeral: true);
 
-        var message = await Context.Channel.GetMessageAsync(messageId, options: new RequestOptions { CancelToken = cancellationToken });
+        var message = await Context.Channel.GetMessageAsync(messageId);
 
         if (message.Reactions.TryGetValue(VerifiedEmote, out var dat) && dat.IsMe)
         {
-            await FollowupAsync("Submission was already verified.", ephemeral: true, options: new RequestOptions { CancelToken =  cancellationToken });
+            await FollowupAsync("Submission was already verified.", ephemeral: true);
             return;
         }
 
-        var competition = await competitionsQueryService.GetCompetition(message.Channel.Id, cancellationToken);
+        var competition = await competitionsQueryService.GetCompetition(message.Channel.Id);
         if (competition == null)
         {
             await FollowupAsync("Unable to verify submission: Channel is not associated with a competition.",
-                ephemeral: true, options: new RequestOptions() { CancelToken = cancellationToken });
+                ephemeral: true);
             return;
         }
 
@@ -126,15 +120,14 @@ public class VerifyModule(
         {
             await FollowupAsync(
                 $"Unable to verify submission: Only members in {MentionUtils.MentionRole(competition.VerifierRoleId)} role can verify submissions.",
-                ephemeral: true,
-                options: new RequestOptions() { CancelToken = cancellationToken });
+                ephemeral: true);
             return;
         }
 
-        var sheetsRef = (await competitionsQueryService.GetSpreadsheetRef(Context.Channel.Id, cancellationToken))!;
+        var sheetsRef = (await competitionsQueryService.GetSpreadsheetRef(Context.Channel.Id))!;
 
         if (item != null && competition.Features.ItemsRestricted &&
-            !await spreadsheetQueryService.VerifyItemExists(competition.Spreadsheet, item, cancellationToken))
+            !await spreadsheetQueryService.VerifyItemExists(competition.Spreadsheet, item))
         {
             await FollowupAsync($"Restricted items: Item with name '{item}' was not found.",
                 components: ((SocketGuildUser)Context.User).GuildPermissions.Has(GuildPermission.ManageChannels) &&
@@ -142,20 +135,19 @@ public class VerifyModule(
                     ? new ComponentBuilder().WithButton(label: "Add item", emote: new Emoji("➕"),
                         customId: $"i:{item.Replace(' ', '|')}").Build()
                     : null,
-                ephemeral: true, options: new RequestOptions() { CancelToken = cancellationToken });
+                ephemeral: true);
             return;
         }
 
         await spreadsheetService.AddSubmission(sheetsRef, message.Id, message.GetJumpUrl(), message.Author.Id,
             Context.User.Id, GetAttachedImageUrl(message),
-            message.Timestamp.UtcDateTime, item, bonusPoints, cancellationToken);
+            message.Timestamp.UtcDateTime, item, bonusPoints);
 
-        await message.AddReactionAsync(VerifiedEmote, new RequestOptions { CancelToken = cancellationToken });
+        await message.AddReactionAsync(VerifiedEmote);
         await FollowupAsync("Submission verified successfully!", ephemeral: true,
             components: new ComponentBuilder().AddRow(new ActionRowBuilder()
                 .WithSpreadsheetRefButton("Open Google Sheets", "📑", sheetsRef.SpreadsheetId,
-                    sheetsRef.Sheets.Submissions)).Build(),
-            options: new RequestOptions { CancelToken = cancellationToken });
+                    sheetsRef.Sheets.Submissions)).Build());
     }
 
     private static string? GetAttachedImageUrl(IMessage message)

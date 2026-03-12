@@ -25,9 +25,7 @@ public partial class CompetitionsModule(
         IRole verifierRole,
         
         [Summary(description: "Name of the competition. Defaults to specified channel name.")]
-        string? name = null,
-        
-        CancellationToken cancellationToken = default
+        string? name = null
     )
     {
         if (spreadsheetId.Length != 44)
@@ -38,31 +36,30 @@ public partial class CompetitionsModule(
 
         await DeferAsync(ephemeral: true);
 
-        if (await dbContext.Competitions.AsNoTracking().AnyAsync(c => c.ChannelId == Context.Channel.Id, cancellationToken: cancellationToken))
+        if (await dbContext.Competitions.AsNoTracking().AnyAsync(c => c.ChannelId == Context.Channel.Id))
             throw new EntityValidationException("This channel already has a competition. Please use a different channel to create a new competition.");
 
         var entity = new Competition
         {
             ChannelId = Context.Channel.Id, VerifierRoleId = verifierRole.Id,
-            Spreadsheet = await sheet.CreateCompetition(spreadsheetId, name ?? $"#{Context.Channel.Name}", cancellationToken)
+            Spreadsheet = await sheet.CreateCompetition(spreadsheetId, name ?? $"#{Context.Channel.Name}")
         };
 
         dbContext.Competitions.Add(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.SaveChangesAsync();
 
         await FollowupAsync("Competition successfully created. You can view it with /competitions show");
     }
 
     [RequireUserPermission(ChannelPermission.ManageChannels)]
     [SlashCommand("reload", "Reloads the competition data from the spreadsheet.")]
-    public async Task Reload(CancellationToken cancellationToken = default)
+    public async Task Reload()
     {
-        var competition =
-            await dbContext.Competitions.FindAsync([Context.Channel.Id], cancellationToken: cancellationToken) ??
-            throw EntityNotFoundException.CompetitionNotFound;
+        var competition = await dbContext.Competitions.FindAsync(Context.Channel.Id) ??
+                          throw EntityNotFoundException.CompetitionNotFound;
 
-        await spreadsheetQueryService.ResetCache(competition.Spreadsheet, "items", cancellationToken);
-        await spreadsheetQueryService.ResetCache(competition.Spreadsheet, "members", cancellationToken);
+        await spreadsheetQueryService.ResetCache(competition.Spreadsheet, "items");
+        await spreadsheetQueryService.ResetCache(competition.Spreadsheet, "members");
 
         await RespondAsync("Configuration reloaded.", ephemeral: true);
     }

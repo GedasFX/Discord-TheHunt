@@ -23,27 +23,25 @@ public partial class CompetitionsModule
             string name,
 
             [Summary(description: "Points value. Default = 0.")]
-            int pointsValue = 0,
-
-            CancellationToken cancellationToken = default)
+            int pointsValue = 0)
         {
-            await DeferAsync(ephemeral: true, options: new RequestOptions { CancelToken = cancellationToken });
+            await DeferAsync(ephemeral: true);
 
-            var competition = await competitionsQueryService.GetCompetition(Context.Channel.Id, cancellationToken) ??
+            var competition = await competitionsQueryService.GetCompetition(Context.Channel.Id) ??
                               throw EntityNotFoundException.CompetitionNotFound;
 
-            if (await sheetQueryService.VerifyItemExists(competition.Spreadsheet, name, cancellationToken))
+            if (await sheetQueryService.VerifyItemExists(competition.Spreadsheet, name))
             {
                 // Not an exception to handle component interactions
-                await FollowupAsync($"Item '{name}' was already registered.", ephemeral: true, options: new RequestOptions { CancelToken = cancellationToken });
+                await FollowupAsync($"Item '{name}' was already registered.", ephemeral: true);
                 return;
             }
 
-            await sheetService.AddItem(competition.Spreadsheet, name, pointsValue, cancellationToken);
-            await sheetQueryService.ResetCache(competition.Spreadsheet, "items", cancellationToken);
+            await sheetService.AddItem(competition.Spreadsheet, name, pointsValue);
+            await sheetQueryService.ResetCache(competition.Spreadsheet, "items");
 
             await FollowupAsync($"Item '{name}' was registered. To undo, run:\n```/competitions items remove name:{name}```",
-                ephemeral: true, options: new RequestOptions { CancelToken = cancellationToken });
+                ephemeral: true);
         }
 
         [RequireUserPermission(ChannelPermission.ManageChannels)]
@@ -51,21 +49,19 @@ public partial class CompetitionsModule
         public async Task Remove(
             [Summary(description: "User to remove from the competition.")]
             [Autocomplete(typeof(ItemsListAutocompleteHandler))]
-            string name,
-            
-            CancellationToken cancellationToken = default)
+            string name)
         {
             await DeferAsync(ephemeral: true);
             
-            var competition = await competitionsQueryService.GetCompetition(Context.Channel.Id, cancellationToken) ??
+            var competition = await competitionsQueryService.GetCompetition(Context.Channel.Id) ??
                               throw EntityNotFoundException.CompetitionNotFound;
             
-            var item = await sheetQueryService.GetCompetitionItem(competition.Spreadsheet, name, cancellationToken);
+            var item = await sheetQueryService.GetCompetitionItem(competition.Spreadsheet, name);
             if (item == null)
                 throw new EntityValidationException($"Item '{name}' was not registered.");
 
-            await sheetService.RemoveItem(competition.Spreadsheet, item.RowIdx, cancellationToken);
-            await sheetQueryService.ResetCache(competition.Spreadsheet, "items", cancellationToken);
+            await sheetService.RemoveItem(competition.Spreadsheet, item.RowIdx);
+            await sheetQueryService.ResetCache(competition.Spreadsheet, "items");
 
             await FollowupAsync($"Item '{name}' was unregistered. To undo, run:\n```/competitions items add name:{name}```",
                 ephemeral: true);
@@ -73,10 +69,10 @@ public partial class CompetitionsModule
 
         [RequireUserPermission(ChannelPermission.ManageChannels)]
         [ComponentInteraction("i:*", ignoreGroupNames: true)]
-        public async Task AddFromInteraction(string name, CancellationToken cancellationToken = default)
+        public async Task AddFromInteraction(string name)
         {
             // Hack - using '|' as whitespace. If item has '|' in its name, tough luck, we will not show button.
-            await Add(name.Replace('|', ' '), cancellationToken: cancellationToken);
+            await Add(name.Replace('|', ' '));
         }
         
         public class ItemsListAutocompleteHandler : AutocompleteHandler

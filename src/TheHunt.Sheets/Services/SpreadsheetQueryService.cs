@@ -6,7 +6,7 @@ namespace TheHunt.Sheets.Services;
 
 public class SpreadsheetQueryService(SpreadsheetService spreadsheetService, HybridCache cache)
 {
-    private static TimeSpan CacheExpiration { get; } = TimeSpan.FromMinutes(30);
+    private static TimeSpan CacheExpiration { get; } = TimeSpan.FromMinutes(1);
 
     #region Members
 
