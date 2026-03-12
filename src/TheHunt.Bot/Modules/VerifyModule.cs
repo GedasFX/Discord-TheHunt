@@ -37,6 +37,46 @@ public class VerifyModule(
         await VerifySubmission(message.Id, message.Content.Split('\n')[0], cancellationToken: cancellationToken);
     }
 
+    [CommandContextType(InteractionContextType.Guild)]
+    [MessageCommand("Select for Verification")]
+    public async Task SelectForVerification(IUserMessage message, CancellationToken cancellationToken = default)
+    {
+        await hybridCache.SetAsync(
+            SelectedMessageCacheKey(Context.User.Id, Context.Channel.Id),
+            message.Id,
+            cancellationToken: cancellationToken);
+        await RespondAsync(
+            "Message selected for verification. Now use `/verify` to complete the verification.",
+            ephemeral: true, options: new RequestOptions { CancelToken = cancellationToken });
+    }
+
+    [CommandContextType(InteractionContextType.Guild)]
+    [SlashCommand("verify", "Verifies the previously selected submission.")]
+    public async Task VerifySelected(
+        [Summary(description: "Name of the item being submitted.")]
+        [Autocomplete(typeof(CompetitionsModule.CompetitionsItemsModule.ItemsListAutocompleteHandler))]
+        string? item = null,
+        
+        [Summary(description: "Bonus points to award.")]
+        int bonus = 0,
+        
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = SelectedMessageCacheKey(Context.User.Id, Context.Channel.Id);
+        var messageId = await hybridCache.GetOrCreateAsync(cacheKey, _ => ValueTask.FromResult<ulong?>(null), cancellationToken: cancellationToken);
+        if (messageId is null)
+        {
+            await RespondAsync(
+                "No message selected. Right-click a message and choose **Select for Verification** first.",
+                ephemeral: true,
+                options: new RequestOptions { CancelToken = cancellationToken });
+            return;
+        }
+
+        await hybridCache.RemoveAsync(cacheKey, cancellationToken);
+        await VerifySubmission(messageId.Value, item, bonus, cancellationToken);
+    }
+
     public class SubmissionModal : IModal
     {
         public string Title => "Verify Submission";
