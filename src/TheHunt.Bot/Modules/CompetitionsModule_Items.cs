@@ -92,7 +92,7 @@ public partial class CompetitionsModule
                 var items = await sheetsQueryService.GetCompetitionItems(sheetsRef);
 
                 return AutocompletionResult.FromSuccess(
-                    items.Where(e => e.Key.Contains(val))
+                    items.Where(e => e.Key.Contains(val, StringComparison.OrdinalIgnoreCase))
                         .Select(e => new AutocompleteResult(e.Key, e.Key))
                         .Take(25));
             }
