@@ -1,61 +1,80 @@
-﻿using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Hybrid;
 using TheHunt.Data.Models;
 using TheHunt.Sheets.Models;
 
 namespace TheHunt.Sheets.Services;
 
-public class SpreadsheetQueryService(SpreadsheetService spreadsheetService, IMemoryCache cache)
+public class SpreadsheetQueryService(SpreadsheetService spreadsheetService, HybridCache cache)
 {
-    private static TimeSpan CacheExpiration { get; } = TimeSpan.FromMinutes(1);
+    private static TimeSpan CacheExpiration { get; } = TimeSpan.FromMinutes(30);
 
     #region Members
 
-    public async Task<IReadOnlyDictionary<ulong, CompetitionUser>> GetCompetitionMembers(SheetsRef sheetRef) =>
-        (await UseCache($"__{sheetRef.SpreadsheetId}_members",
-            async () => (await spreadsheetService.GetMembers(sheetRef)).ToDictionary(c => c.UserId)))!;
+    public async Task<IReadOnlyDictionary<ulong, CompetitionUser>> GetCompetitionMembers(SheetsRef sheetRef,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await UseCache($"__{sheetRef.SpreadsheetId}_members",
+            async ct =>
+            {
+                var members = await spreadsheetService.GetMembers(sheetRef, ct);
+                return members.ToDictionary(c => c.UserId);
+            }, cancellationToken);
+
+        return result!;
+    }
 
     public async Task<CompetitionUser?> GetCompetitionMember(SheetsRef sheetRef, ulong userId)
     {
-        return (await GetCompetitionMembers(sheetRef)).TryGetValue(userId, out var val) ? val : null;
+        var members = await GetCompetitionMembers(sheetRef);
+        return members.TryGetValue(userId, out var val) ? val : null;
     }
 
     #endregion
 
     #region Items
 
-    public async Task<IReadOnlyDictionary<string, CompetitionItem>> GetCompetitionItems(SheetsRef sheetRef) =>
-        (await UseCache($"__{sheetRef.SpreadsheetId}_items",
-            async () => (await spreadsheetService.GetItems(sheetRef)).ToDictionary(c => c.Name)))!;
-
-    public async Task<CompetitionItem?> GetCompetitionItem(SheetsRef sheetRef, string name)
+    public async Task<IReadOnlyDictionary<string, CompetitionItem>> GetCompetitionItems(SheetsRef sheetRef,
+        CancellationToken cancellationToken = default)
     {
-        return (await GetCompetitionItems(sheetRef)).TryGetValue(name, out var val) ? val : null;
+        var result = await UseCache($"__{sheetRef.SpreadsheetId}_items",
+            async ct =>
+            {
+                var items = await spreadsheetService.GetItems(sheetRef, ct);
+                return items.ToDictionary(c => c.Name);
+            },
+            cancellationToken);
+
+        return result!;
     }
 
-    public async Task<bool> VerifyItemExists(SheetsRef sheetRef, string? itemName)
+    public async Task<CompetitionItem?> GetCompetitionItem(SheetsRef sheetRef, string name,
+        CancellationToken cancellationToken = default)
     {
-        return itemName != null && (await GetCompetitionItems(sheetRef)).ContainsKey(itemName);
+        var items = await GetCompetitionItems(sheetRef, cancellationToken);
+        return items.TryGetValue(name, out var val) ? val : null;
+    }
+
+    public async Task<bool> VerifyItemExists(SheetsRef sheetRef, string? itemName, CancellationToken cancellationToken = default)
+    {
+        return itemName != null && (await GetCompetitionItems(sheetRef, cancellationToken)).ContainsKey(itemName);
     }
 
     #endregion
 
-
-    public void ResetCache(SheetsRef sheetRef, string type)
+    public async Task ResetCache(SheetsRef sheetRef, string type, CancellationToken cancellationToken = default)
     {
-        cache.Remove($"__{sheetRef.SpreadsheetId}_{type}");
+        await cache.RemoveAsync($"__{sheetRef.SpreadsheetId}_{type}", cancellationToken);
     }
 
-    private async Task<T?> UseCache<T>(string cacheKey, Func<Task<T?>>? fetcher = null) where T : class
+    private async Task<T?> UseCache<T>(string cacheKey, Func<CancellationToken, ValueTask<T?>> fetcher,
+        CancellationToken cancellationToken = default) where T : class
     {
-        if (cache.TryGetValue(cacheKey, out var result))
-            return result as T;
-
-        if (fetcher == null)
-            return null;
-
-        result = await fetcher();
-
-        cache.Set(cacheKey, result, CacheExpiration);
-        return result as T;
+        return await cache.GetOrCreateAsync(
+            cacheKey,
+            fetcher,
+            new HybridCacheEntryOptions
+            {
+                Expiration = CacheExpiration, LocalCacheExpiration = CacheExpiration
+            }, cancellationToken: cancellationToken);
     }
 }

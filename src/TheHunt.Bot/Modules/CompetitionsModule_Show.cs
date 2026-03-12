@@ -33,9 +33,9 @@ public partial class CompetitionsModule
         }
 
         [SlashCommand("show-config", "Provides a high level overview of competition.")]
-        public async Task Config()
+        public async Task Config(CancellationToken cancellationToken = default)
         {
-            var competition = await competitionsQueryService.GetCompetition(Context.Channel.Id);
+            var competition = await competitionsQueryService.GetCompetition(Context.Channel.Id, cancellationToken);
             if (competition == null)
                 throw EntityNotFoundException.CompetitionNotFound;
 
@@ -52,7 +52,8 @@ public partial class CompetitionsModule
                         $"\\> {(competition.Features.ItemsRestricted ? "Enabled" : "Disabled")}")
                     .WithColor(0xA44200)
                     .Build(),
-                ephemeral: true);
+                ephemeral: true,
+                options: new RequestOptions { CancelToken = cancellationToken });
         }
     }
 }

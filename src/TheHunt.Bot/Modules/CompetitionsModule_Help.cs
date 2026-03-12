@@ -122,9 +122,9 @@ Yes. It is safe to make manual edits on the spreadsheet. If you do not rename sh
             .Build();
 
         [SlashCommand("manual-edit", "Instructions on how to verify submissions.")]
-        public async Task HelpManualEdit()
+        public async Task HelpManualEdit(CancellationToken cancellationToken = default)
         {
-            await RespondAsync(embed: HelpManualEditEmbed, ephemeral: true);
+            await RespondAsync(embed: HelpManualEditEmbed, ephemeral: true, options: new RequestOptions { CancelToken = cancellationToken });
         }
     }
 }
